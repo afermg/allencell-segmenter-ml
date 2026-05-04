@@ -6,8 +6,8 @@
     systems.url = "github:nix-systems/default";
     flake-utils.url = "github:numtide/flake-utils";
     flake-utils.inputs.systems.follows = "systems";
-    pynng-flake.url = "github:afermg/pynng";
-    pynng-flake.inputs.nixpkgs.follows = "nixpkgs";
+    nahual-flake.url = "github:afermg/nahual";
+    nahual-flake.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
@@ -36,7 +36,7 @@
         apps.default =
           let
             python_with_pkgs = python3.withPackages (pp: [
-              packages.nahual
+              (inputs.nahual-flake.packages.${system}.nahual)
               cytoDl
               pp.torch
               pp.torchvision
@@ -59,9 +59,6 @@
           };
 
         packages = {
-          nahual = pkgs.python3.pkgs.callPackage ./nix/nahual.nix {
-            pynng = inputs.pynng-flake.packages.${system}.pynng;
-          };
           cyto-dl = cytoDl;
         };
 
@@ -69,7 +66,7 @@
           default =
             let
               python_with_pkgs = python3.withPackages (pp: [
-                packages.nahual
+                (inputs.nahual-flake.packages.${system}.nahual)
                 cytoDl
                 pp.torch
                 pp.torchvision
