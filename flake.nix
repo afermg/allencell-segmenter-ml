@@ -91,7 +91,9 @@
                 pkgs.cudaPackages.cudnn
               ];
               shellHook = ''
-                export PYTHONPATH=${python_with_pkgs}/${python_with_pkgs.sitePackages}:$PYTHONPATH
+                # python.withPackages already wraps python with the right
+                # site-packages on the import path, so an explicit PYTHONPATH
+                # is redundant.
                 export CUDA_PATH=${pkgs.cudaPackages.cudatoolkit}
               '';
             };
