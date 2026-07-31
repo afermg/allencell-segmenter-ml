@@ -34,8 +34,7 @@ address = sys.argv[1]
 # Default S3 endpoint for MegaSeg, copied from
 # allencell_ml_segmenter.utils.s3.s3_bucket_constants.PROD_BUCKET (no Qt import).
 _MEGASEG_URL = (
-    "https://production-aics-ml-segmenter-models.s3.us-west-2.amazonaws.com/"
-    "megaSeg.zip"
+    "https://production-aics-ml-segmenter-models.s3.us-west-2.amazonaws.com/megaSeg.zip"
 )
 _DEFAULT_CACHE_DIR = Path(
     os.environ.get(
@@ -57,7 +56,9 @@ def _ensure_megaseg_checkpoint(cache_dir: Path) -> Path:
     zip_path = cache_dir / "megaSeg.zip"
     if not zip_path.exists():
         print(f"Downloading MegaSeg checkpoint to {zip_path}", flush=True)
-        urllib.request.urlretrieve(_MEGASEG_URL, zip_path)
+        partial_path = zip_path.with_suffix(".zip.part")
+        urllib.request.urlretrieve(_MEGASEG_URL, partial_path)
+        partial_path.replace(zip_path)
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(cache_dir)
     if not ckpt.exists():
@@ -133,7 +134,7 @@ def _build_model(checkpoint_path: Path, torch_device: torch.device):
 def setup(
     checkpoint_path: str | None = None,
     cache_dir: str | None = None,
-    device: int | None = None,
+    device: int | str | None = None,
     overlap: float = 0.0,
     sw_batch_size: int = 1,
 ) -> tuple[Callable, dict]:
@@ -148,22 +149,29 @@ def setup(
         Directory to store / look up the auto-downloaded MegaSeg bundle.
         Defaults to ``$MEGASEG_CACHE_DIR`` or ``~/.cache/megaseg``.
     device
-        CUDA device index. ``0`` by default. CPU fallback if no CUDA.
+        CUDA device index or torch device string. ``None`` selects ``cuda:0``
+        when available and otherwise CPU.
     overlap, sw_batch_size
         MONAI sliding-window inference knobs the client may override.
     """
     if device is None:
-        device = 0
-    if torch.cuda.is_available():
-        torch_device = torch.device(int(device))
+        torch_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    elif isinstance(device, int):
+        torch_device = torch.device(f"cuda:{device}")
     else:
-        torch_device = torch.device("cpu")
+        torch_device = torch.device(device)
+    if torch_device.type == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError(
+            f"CUDA device {torch_device} was requested but CUDA is unavailable"
+        )
 
     cache = Path(cache_dir) if cache_dir else _DEFAULT_CACHE_DIR
     if checkpoint_path is None:
         ckpt = _ensure_megaseg_checkpoint(cache)
     else:
         ckpt = Path(checkpoint_path)
+        if not ckpt.exists():
+            raise FileNotFoundError(f"Checkpoint does not exist: {ckpt}")
 
     model, patch_shape = _build_model(ckpt, torch_device)
     # Patch in any client-side overrides for the sliding-window inferer.
