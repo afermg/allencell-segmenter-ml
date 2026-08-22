@@ -202,6 +202,7 @@ def _normalize_intensity(t: torch.Tensor) -> torch.Tensor:
     return (t - mean) / std
 
 
+@torch.inference_mode()
 def process(
     pixels: numpy.ndarray,
     model,
@@ -224,16 +225,15 @@ def process(
     tensor = torch.from_numpy(numpy.ascontiguousarray(pixels)).to(device).float()
     tensor = _normalize_intensity(tensor)
 
-    with torch.no_grad():
-        raw = sliding_window_inference(
-            inputs=tensor,
-            roi_size=patch_shape,
-            sw_batch_size=int(model.hparams.inference_args["sw_batch_size"]),
-            predictor=model.forward,
-            overlap=float(model.hparams.inference_args["overlap"]),
-            mode=str(model.hparams.inference_args["mode"]),
-            run_heads=["seg"],
-        )
+    raw = sliding_window_inference(
+        inputs=tensor,
+        roi_size=patch_shape,
+        sw_batch_size=int(model.hparams.inference_args["sw_batch_size"]),
+        predictor=model.forward,
+        overlap=float(model.hparams.inference_args["overlap"]),
+        mode=str(model.hparams.inference_args["mode"]),
+        run_heads=["seg"],
+    )
 
     seg_logits = raw["seg"]  # (N, 1, Z, Y, X)
     seg = (torch.sigmoid(seg_logits) > 0.5).to(torch.uint8)
@@ -241,7 +241,7 @@ def process(
 
 
 async def main():
-    with pynng.Rep0(listen=address, recv_timeout=300) as sock:
+    with pynng.Rep0(listen=address, recv_timeout=300_000) as sock:
         print(f"MegaSeg server listening on {address}", flush=True)
         async with trio.open_nursery() as nursery:
             nursery.start_soon(partial(responder, setup=setup), sock)
